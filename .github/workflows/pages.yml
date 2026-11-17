@@ -27,11 +27,19 @@ jobs:
         uses: actions/checkout@v6
       - name: Configure Pages
         uses: actions/configure-pages@v5
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - name: Build Android app
+        working-directory: mobile_app
+        run: flutter build apk --release
       - name: Prepare website files
         run: |
           mkdir -p _site/downloads
           cp index.html styles.css platform.css app.js supabase-config.js scanner.html scanner.css scanner.js _site/
-          cp downloads/HelpUs.apk _site/downloads/
+          cp mobile_app/build/app/outputs/flutter-apk/app-release.apk _site/downloads/HelpUs.apk
       - name: Upload website
         uses: actions/upload-pages-artifact@v4
         with:

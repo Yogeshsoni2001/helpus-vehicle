@@ -300,8 +300,8 @@ class _PhoneLoginScreenState extends State<PhoneLoginScreen> {
                 Text(
                   _otpSent
                       ? (supabaseConfigured
-                            ? 'Enter the code we sent to ${_normalisedPhone()}.'
-                            : 'Enter the code shown below for ${_normalisedPhone()}.')
+                            ? 'Enter the code we sent to ${_normalisedPhone()}. It verifies automatically after 6 digits.'
+                            : 'Enter the code shown below for ${_normalisedPhone()}. It verifies automatically after 6 digits.')
                       : 'Sign in or create an account with your mobile number.',
                   textAlign: TextAlign.center,
                   style: const TextStyle(color: Color(0xFF778278), height: 1.5),
@@ -341,6 +341,10 @@ class _PhoneLoginScreenState extends State<PhoneLoginScreen> {
                             autofillHints: const [AutofillHints.oneTimeCode],
                             maxLength: 6,
                             textAlign: TextAlign.center,
+                            onChanged: (value) {
+                              final digits = value.replaceAll(RegExp(r'\D'), '');
+                              if (digits.length == 6 && !_busy) _verifyCode();
+                            },
                             style: const TextStyle(
                               fontSize: 24,
                               letterSpacing: 8,
