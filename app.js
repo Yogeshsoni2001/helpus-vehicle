@@ -5,8 +5,15 @@ const footer = $('.site-footer');
 const dashboard = $('#dashboardView');
 const scanView = $('#scanView');
 let toastTimer;
+let authSession = null;
+let accountName = 'there';
+const supabaseConfig = window.HELPUS_SUPABASE || {};
+const authClient = window.supabase?.createClient && supabaseConfig.url && supabaseConfig.anonKey
+  ? window.supabase.createClient(supabaseConfig.url, supabaseConfig.anonKey)
+  : null;
 
 function showView(name) {
+  if (name === 'dashboard' && !authSession) { openPhoneLogin(); return; }
   const isHome = name === 'home';
   landing.hidden = !isHome;
   footer.hidden = !isHome;
@@ -26,11 +33,126 @@ function showToast(message) {
   toastTimer = setTimeout(() => toast.classList.remove('show'), 3000);
 }
 
+const phoneLoginBackdrop = document.createElement('div');
+phoneLoginBackdrop.className = 'modal-backdrop';
+phoneLoginBackdrop.id = 'phoneLoginBackdrop';
+phoneLoginBackdrop.hidden = true;
+phoneLoginBackdrop.innerHTML = '<div class="modal phone-login-modal" role="dialog" aria-modal="true" aria-labelledby="phoneLoginTitle"><button class="modal-close" id="phoneLoginClose" aria-label="Close">×</button><span class="step-icon icon-shield">♡</span><div class="eyebrow">SECURE PHONE SIGN IN</div><h2 id="phoneLoginTitle">Welcome to HelpUs.</h2><p>Sign in or register with your mobile number. We’ll text you a one-time code.</p><div class="auth-form"><label>Your name <span>(for new accounts)</span><input id="authDisplayName" autocomplete="name" placeholder="Your name" /></label><label>Mobile number<input id="authPhone" type="tel" autocomplete="tel" inputmode="tel" value="+91 " placeholder="+91 98765 43210" /></label><div class="auth-status" id="authStatus" role="status"></div><button class="button button-primary auth-action" id="authSendOtp" type="button">Send one-time code <span>↗</span></button><div class="otp-step" id="otpStep" hidden><label>6-digit code<input id="authOtp" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="000000" /></label><button class="button button-primary auth-action" id="authVerifyOtp" type="button">Verify &amp; continue <span>↗</span></button><button class="text-link resend-otp" id="authResendOtp" type="button">Send a new code</button></div></div><small class="auth-footnote">By continuing, you agree to use your number for account verification and HelpUs alerts.</small></div>';
+document.body.append(phoneLoginBackdrop);
+
+function openPhoneLogin() {
+  phoneLoginBackdrop.hidden = false;
+  $('#authStatus').textContent = authClient ? 'Your number stays private. SMS delivery depends on the configured provider.' : 'Phone login is ready in the app code, but the Supabase project and SMS provider are not connected yet.';
+  $('#authSendOtp').disabled = !authClient;
+  $('#authDisplayName').focus();
+}
+
+function closePhoneLogin() { phoneLoginBackdrop.hidden = true; }
+
+function normalizePhone(raw) {
+  const value = raw.replace(/[\s()-]/g, '');
+  if (/^\d{10}$/.test(value)) return `+91${value}`;
+  return /^\+[1-9]\d{7,14}$/.test(value) ? value : '';
+}
+
+function showAuthStatus(message, isError = false) {
+  const status = $('#authStatus');
+  status.textContent = message;
+  status.classList.toggle('error', isError);
+}
+
+$('#phoneLoginClose').addEventListener('click', closePhoneLogin);
+phoneLoginBackdrop.addEventListener('click', event => { if (event.target === phoneLoginBackdrop) closePhoneLogin(); });
+
+$('#authSendOtp').addEventListener('click', async () => {
+  if (!authClient) return;
+  const phone = normalizePhone($('#authPhone').value);
+  if (!phone) { showAuthStatus('Enter a valid number with country code, such as +91 98765 43210.', true); return; }
+  const button = $('#authSendOtp');
+  button.disabled = true;
+  showAuthStatus('Sending your verification code…');
+  try {
+    const displayName = $('#authDisplayName').value.trim();
+    const { error } = await authClient.auth.signInWithOtp({ phone, options: { shouldCreateUser: true, data: { display_name: displayName } } });
+    if (error) throw error;
+    window.helpUsPendingPhone = phone;
+    $('#otpStep').hidden = false;
+    $('#authOtp').focus();
+    showAuthStatus(`Code sent to ${phone}. It may take a minute to arrive.`);
+  } catch (error) { showAuthStatus(error.message || 'Could not send the code. Check your number and try again.', true); }
+  finally { button.disabled = false; }
+});
+
+$('#authVerifyOtp').addEventListener('click', async () => {
+  if (!authClient) return;
+  const phone = window.helpUsPendingPhone;
+  const token = $('#authOtp').value.replace(/\D/g, '');
+  if (!phone || token.length < 6) { showAuthStatus('Enter the 6-digit code sent to your phone.', true); return; }
+  $('#authVerifyOtp').disabled = true;
+  showAuthStatus('Checking your code…');
+  try {
+    const { data, error } = await authClient.auth.verifyOtp({ phone, token, type: 'sms' });
+    if (error) throw error;
+    authSession = data.session;
+    closePhoneLogin();
+    await loadAccountData();
+    showView('dashboard');
+  } catch (error) { showAuthStatus(error.message || 'That code did not work. Request a new one and try again.', true); }
+  finally { $('#authVerifyOtp').disabled = false; }
+});
+
+$('#authResendOtp').addEventListener('click', () => { $('#otpStep').hidden = true; $('#authSendOtp').click(); });
+
+async function loadAccountData() {
+  if (!authClient || !authSession?.user) return;
+  const user = authSession.user;
+  const { data: profile } = await authClient.from('profiles').select('display_name').eq('id', user.id).maybeSingle();
+  const displayName = profile?.display_name || user.user_metadata?.display_name || user.phone || 'HelpUs member';
+  accountName = displayName.split(' ')[0];
+  $$('.user-mini b').forEach(node => node.textContent = displayName);
+  $$('.user-mini small').forEach(node => node.textContent = user.phone || 'Phone account');
+  const firstName = displayName.split(' ')[0];
+  $('#dashboardTitle').textContent = `A little peace of mind, ${firstName}.`;
+  const { data: vehicles, error } = await authClient.from('vehicles').select('id,tag_code,make_model,registration_number,model_year,color,is_active,created_at').order('created_at', { ascending: false });
+  if (error) { showToast('Could not load vehicles. Please refresh and sign in again.'); return; }
+  const list = $('.vehicle-list');
+  list.replaceChildren();
+  for (const vehicle of vehicles || []) {
+    const card = document.createElement('div'); card.className = 'vehicle-list-card';
+    const icon = document.createElement('div'); icon.className = 'list-car-icon'; icon.textContent = '↗';
+    const details = document.createElement('div');
+    const title = document.createElement('h3'); title.textContent = vehicle.make_model;
+    const sub = document.createElement('p'); sub.textContent = [vehicle.model_year, vehicle.color, vehicle.registration_number].filter(Boolean).join(' · ');
+    const status = document.createElement('span'); status.className = 'active-pill'; status.textContent = `${vehicle.is_active ? '● Tag active' : '○ Paused'} · ${vehicle.tag_code}`;
+    details.append(title, sub, status); card.append(icon, details); list.append(card);
+  }
+  const first = vehicles?.[0];
+  $('.vehicle-info h3').textContent = first?.make_model || 'No vehicle registered yet';
+  $('.vehicle-info span').textContent = first ? `${first.model_year || ''}${first.model_year ? ' · ' : ''}${first.color || ''} · ${first.registration_number}` : 'Scan a HelpUs QR tag to add your first vehicle.';
+  $('.vehicle-status').innerHTML = `<i></i> ${first ? (first.is_active ? 'Tag active' : 'Tag paused') : 'No tag linked'}`;
+}
+
+if (authClient) {
+  authClient.auth.getSession().then(({ data }) => {
+    authSession = data.session;
+    if (authSession) loadAccountData();
+  });
+  authClient.auth.onAuthStateChange((_event, session) => {
+    authSession = session;
+    if (!session && !dashboard.hidden) showView('home');
+  });
+  $('#signOutButton')?.addEventListener('click', async () => {
+    await authClient.auth.signOut();
+    authSession = null;
+    showView('home');
+  });
+}
+
 function setTab(tab) {
   $$('.tab-panel').forEach(panel => panel.hidden = panel.id !== `${tab}Panel`);
   $$('[data-tab]').forEach(button => button.classList.toggle('active', button.dataset.tab === tab));
   const titles = {
-    overview: ['A little peace of mind, Alex.', "Here's what's happening with your vehicles."],
+    overview: [`A little peace of mind, ${accountName}.`, "Here's what's happening with your vehicles."],
     vehicles: ['Your garage, at a glance.', 'Manage the vehicles connected to your tags.'],
     alerts: ['You’re in the loop.', 'Helpful updates from people who scanned your vehicle.'],
     settings: ['Your choices, your call.', 'Manage privacy and contact preferences.'],
@@ -150,29 +272,30 @@ $('#startTagScan').addEventListener('click', startTagScan);
 ['#addVehicleButton', '#addVehicleButton2', '#addVehicleButton3'].forEach(selector => $(selector).addEventListener('click', enrollModal));
 $('#modalClose').addEventListener('click', () => { stopWebCamera(); vehicleModal.hidden = true; });
 vehicleModal.addEventListener('click', event => { if (event.target === vehicleModal) { stopWebCamera(); vehicleModal.hidden = true; } });
-vehicleForm.addEventListener('submit', event => {
+vehicleForm.addEventListener('submit', async event => {
   event.preventDefault();
   const form = new FormData(event.currentTarget);
   const tagId = String(form.get('tagId') || '');
   if (!tagId) { showToast('Scan a valid HelpUs QR tag before registering.'); return; }
+  if (!authClient || !authSession?.user) { showToast('Sign in before registering a vehicle.'); openPhoneLogin(); return; }
   const name = String(form.get('vehicle')).trim();
   const registration = String(form.get('registration')).trim().toUpperCase();
   const year = String(form.get('year')).trim();
-  const card = document.createElement('div');
-  card.className = 'vehicle-list-card';
-  const icon = document.createElement('div'); icon.className = 'list-car-icon'; icon.textContent = '↗';
-  const details = document.createElement('div');
-  const title = document.createElement('h3'); title.textContent = name;
-  const sub = document.createElement('p'); sub.textContent = [year, registration].filter(Boolean).join(' · ');
-  const status = document.createElement('span'); status.className = 'active-pill'; status.textContent = `● Tag active · ${tagId}`;
-  details.append(title, sub, status);
-  const edit = document.createElement('button'); edit.className = 'button button-outline small-button'; edit.textContent = 'Edit details'; edit.addEventListener('click', () => showToast('Vehicle editing is a demo action.'));
-  card.append(icon, details, edit);
-  $('.vehicle-list').prepend(card);
+  const submitButton = $('.modal-submit', vehicleForm);
+  submitButton.disabled = true;
+  try {
+    const { error } = await authClient.rpc('register_vehicle', { p_tag_code: tagId, p_make_model: name, p_registration_number: registration, p_vehicle_type: 'car', p_model_year: year ? Number(year) : null, p_color: '' });
+    if (error) throw error;
+  } catch (error) {
+    showToast(error.message || 'Could not register this tag. Check the tag and try again.');
+    submitButton.disabled = false;
+    return;
+  }
   stopWebCamera();
   vehicleModal.hidden = true;
   event.currentTarget.reset();
-  showToast(`${name} added to your demo garage`);
+  await loadAccountData();
+  showToast(`${name} registered to your HelpUs account`);
   setTab('vehicles');
 });
 

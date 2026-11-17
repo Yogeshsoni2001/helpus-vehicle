@@ -20,9 +20,21 @@ This is a static website with no build step. Open `index.html` in a current brow
 
 The installable Android demo is available at [`downloads/HelpUs.apk`](downloads/HelpUs.apk). The Flutter project is in `mobile_app/`. To rebuild it, install Flutter and the Android SDK, then run `flutter build apk --release` from that folder. This development build uses the default debug signing key; create a private release signing key before publishing through an app store.
 
+## Turn on phone login and cloud data
+
+The phone OTP login and shared vehicle data use Supabase Auth and Postgres. They need a HelpUs Supabase project before they can send codes or save owner data:
+
+1. In Supabase, enable Phone under Authentication → Sign In / Providers and configure an SMS provider. Without provider credentials, real SMS codes cannot be delivered. Phone numbers are entered in international format; the form defaults to India (`+91`).
+2. Run [`supabase/schema.sql`](supabase/schema.sql) once in the Supabase SQL Editor. It creates profiles, issued QR tags, owner vehicles, alerts, row-level security policies, and a one-time `register_vehicle` RPC. Vehicle registration only succeeds for an unclaimed tag present in `vehicle_tags`.
+3. Put the project's URL and publishable/anon key in `supabase-config.js`. The anon key is designed for client apps; never put a `service_role` or secret key in this file.
+4. Build the Android APK with `flutter build apk --release --dart-define=SUPABASE_URL=https://YOUR_PROJECT.supabase.co --dart-define=SUPABASE_ANON_KEY=YOUR_PUBLISHABLE_KEY` from `mobile_app/`.
+5. For each physical QR tag, add its uppercase code to `public.vehicle_tags` from the Supabase SQL Editor. Its QR payload should be `HELPUS:<TAG_CODE>`.
+
+With blank config, a fresh APK shows setup guidance and the website login explains that authentication is not connected. The existing published Pages demo stays unchanged until project configuration is supplied and a connected build is deployed. Never send SMS provider secrets in the browser or mobile app.
+
 ## Prototype boundaries
 
-This is a prototype. Demo content is illustrative and does not persist data. The scanner accepts HelpUs QR formats (`HELPUS:<tag-id>`, `helpus://tag/<tag-id>`, or a HelpUs `/tag/<tag-id>` link) and unlocks the registration form after a scan. This client-side format check is not proof that a tag was issued by HelpUs; production must verify each unused tag with a backend before registering the vehicle. The website scanner needs browser camera access on a supported browser over HTTPS; the APK requests Android camera access. The demo does not create accounts, verify OTPs, place orders, collect payment, send alerts, make calls/SMS, generate active QR tags, or connect to an administrator service. Masked telephony, SMS, login/OTP, payments, shipping, server-side tag verification, persistence, and account deletion require a backend and configured service providers before launch. No live tracking is implemented.
+The phone auth UI and client-side data integration are implemented, with database-side owner policies and one-time tag claiming in the supplied schema. They become active only after a Supabase project and SMS provider are configured. The website QR camera requires a supported browser over HTTPS; the APK requests Android camera access. Masked calling, SMS alerts, payments, tag ordering/shipping, public scanner event intake, and account deletion still need provider/backend flows before commercial launch. No live tracking is implemented.
 
 ## Files
 
