@@ -113,6 +113,7 @@ $('#authVerifyOtp').addEventListener('click', async () => {
     closePhoneLogin();
     showToast('Demo sign-in complete. The phone number was not verified.');
     showView('dashboard');
+    openPendingTagRegistration();
     return;
   }
   $('#authVerifyOtp').disabled = true;
@@ -124,6 +125,7 @@ $('#authVerifyOtp').addEventListener('click', async () => {
     closePhoneLogin();
     await loadAccountData();
     showView('dashboard');
+    openPendingTagRegistration();
   } catch (error) { showAuthStatus(error.message || 'That code did not work. Request a new one and try again.', true); }
   finally { $('#authVerifyOtp').disabled = false; }
 });
@@ -162,7 +164,14 @@ async function loadAccountData() {
 if (authClient) {
   authClient.auth.getSession().then(({ data }) => {
     authSession = data.session;
-    if (authSession) loadAccountData();
+    if (authSession) {
+      closePhoneLogin();
+      loadAccountData();
+      if (new URLSearchParams(location.search).get('register') === '1') {
+        showView('dashboard');
+        openPendingTagRegistration();
+      }
+    }
   });
   authClient.auth.onAuthStateChange((_event, session) => {
     authSession = session;
@@ -224,7 +233,7 @@ const vehicleModal = $('#vehicleModal');
 const vehicleForm = $('#vehicleForm');
 const scannerPanel = document.createElement('div');
 scannerPanel.className = 'enroll-scanner';
-scannerPanel.innerHTML = '<div class="enroll-scanner-heading"><span class="step-icon icon-tag">⌑</span><div><b>Scan a HelpUs QR tag first</b><small>Vehicle registration unlocks after a valid tag is scanned.</small></div></div><video class="tag-camera" id="tagCamera" playsinline muted hidden></video><div class="tag-scan-status" id="tagScanStatus">Scan a HelpUs-formatted tag to continue.</div><button class="button button-outline start-tag-scan" id="startTagScan" type="button">▦ &nbsp; Open camera &amp; scan tag</button>';
+scannerPanel.innerHTML = '<div class="enroll-scanner-heading"><span class="step-icon icon-tag">⌑</span><div><b>Scan a HelpUs QR tag first</b><small>Vehicle registration unlocks after a valid tag is scanned.</small></div></div><video class="tag-camera" id="tagCamera" playsinline muted hidden></video><div class="tag-scan-status" id="tagScanStatus">Scan a HelpUs-formatted tag to continue.</div><button class="button button-outline start-tag-scan" id="startTagScan" type="button">▦ &nbsp; Open camera &amp; scan tag</button><a class="full-scanner-link" href="scanner.html">Camera not working? Open the full scanner ↗</a>';
 vehicleForm.before(scannerPanel);
 vehicleForm.hidden = true;
 const tagInput = document.createElement('input');
@@ -244,13 +253,21 @@ function stopWebCamera() {
 
 function enrollModal() {
   stopWebCamera();
-  vehicleForm.hidden = true;
-  scannerPanel.hidden = false;
-  scanStatus.textContent = 'Scan a HelpUs-formatted tag to continue.';
-  $('#startTagScan').hidden = false;
+  const pendingTagId = normalizeTag(localStorage.getItem('helpus.pendingTagId'));
+  vehicleForm.hidden = !pendingTagId;
+  scannerPanel.hidden = Boolean(pendingTagId);
+  scanStatus.textContent = pendingTagId ? `Tag ${pendingTagId} scanned. Add vehicle details to continue.` : 'Scan a HelpUs-formatted tag to continue.';
+  $('#startTagScan').hidden = Boolean(pendingTagId);
   tagInput.value = '';
   vehicleForm.reset();
+  tagInput.value = pendingTagId;
   vehicleModal.hidden = false;
+}
+
+function openPendingTagRegistration() {
+  if (new URLSearchParams(location.search).get('register') !== '1') return;
+  if (!normalizeTag(localStorage.getItem('helpus.pendingTagId'))) return;
+  enrollModal();
 }
 
 function normalizeTag(raw) {
@@ -281,6 +298,7 @@ async function startTagScan() {
           const tagId = normalizeTag(raw);
           stopWebCamera();
           tagInput.value = tagId;
+          localStorage.setItem('helpus.pendingTagId', tagId);
           scannerPanel.hidden = true;
           vehicleForm.hidden = false;
           scanStatus.textContent = `Tag ${tagId} verified. Add vehicle details to finish registration.`;
@@ -323,6 +341,7 @@ vehicleForm.addEventListener('submit', async event => {
     $('.vehicle-info h3').textContent = name;
     $('.vehicle-info span').textContent = [year, registration].filter(Boolean).join(' · ');
     stopWebCamera(); vehicleModal.hidden = true; event.currentTarget.reset();
+    localStorage.removeItem('helpus.pendingTagId');
     showToast('Added to this demo session only. It is not saved to a server.');
     setTab('vehicles');
     return;
@@ -338,6 +357,7 @@ vehicleForm.addEventListener('submit', async event => {
   stopWebCamera();
   vehicleModal.hidden = true;
   event.currentTarget.reset();
+  localStorage.removeItem('helpus.pendingTagId');
   await loadAccountData();
   showToast(`${name} registered to your HelpUs account`);
   setTab('vehicles');

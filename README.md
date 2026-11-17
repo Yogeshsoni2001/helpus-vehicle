@@ -11,6 +11,7 @@ This is a static website with no build step. Open `index.html` in a current brow
 - Marketing site with product story, how it works, privacy, pricing, FAQ, responsive layouts, and an app feature preview.
 - Owner dashboard with overview, vehicles, scan alerts, and privacy settings.
 - Vehicle registration is gated behind scanning a HelpUs-formatted QR tag in the web app and native Android app.
+- A standalone web QR scanner at `scanner.html` can use the camera or scan a QR image and pass a recognized tag into vehicle registration. A downloadable demo tag is included for trying the flow.
 - Demo vehicle form, preference switches, share action, and toast feedback.
 - Public QR scan page with example vehicle contact actions and alert choices.
 - A separate native Flutter Android app with Home, Vehicles, Alerts, and Settings tabs.

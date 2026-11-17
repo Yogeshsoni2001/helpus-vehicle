@@ -30,7 +30,7 @@ jobs:
       - name: Prepare website files
         run: |
           mkdir -p _site/downloads
-          cp index.html styles.css platform.css app.js supabase-config.js _site/
+          cp index.html styles.css platform.css app.js supabase-config.js scanner.html scanner.css scanner.js _site/
           cp downloads/HelpUs.apk _site/downloads/
       - name: Upload website
         uses: actions/upload-pages-artifact@v4

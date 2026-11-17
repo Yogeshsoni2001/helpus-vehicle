@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#f4f7f1" />
+  <meta name="description" content="Scan a HelpUs vehicle QR tag using your camera or a QR image." />
+  <title>QR Scanner · HelpUs</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="scanner.css" />
+</head>
+<body>
+  <main class="scanner-shell">
+    <header class="scanner-header">
+      <a class="brand" href="index.html"><span class="brand-mark">✳</span><span>Help<span>Us</span></span></a>
+      <a class="back-link" href="index.html">← Back to website</a>
+    </header>
+
+    <section class="scanner-layout" aria-labelledby="pageTitle">
+      <div class="scanner-copy">
+        <span class="eyebrow"><i></i> HELPUS TAG SETUP</span>
+        <h1 id="pageTitle">Scan your<br /><em>QR tag.</em></h1>
+        <p>Allow camera access and hold a HelpUs vehicle tag inside the frame. You can also scan a QR photo from your phone.</p>
+        <div class="scanner-steps">
+          <div><b>01</b><span>Scan the QR tag</span></div>
+          <div><b>02</b><span>Sign in to HelpUs</span></div>
+          <div><b>03</b><span>Add vehicle details</span></div>
+        </div>
+        <a class="apk-link" href="downloads/HelpUs.apk">Using Android? Get the app scanner ↗</a>
+      </div>
+
+      <div class="scanner-card">
+        <div class="card-heading"><span class="camera-icon">▦</span><div><b>HelpUs QR Scanner</b><small>Camera stays on this device</small></div><span class="secure-pill"><i></i> PRIVATE</span></div>
+        <div class="camera-stage" id="cameraStage">
+          <video id="camera" playsinline muted hidden></video>
+          <div class="camera-placeholder" id="cameraPlaceholder"><div class="placeholder-qr">▦</div><b>Your camera view will appear here</b><small>Use your rear camera for best results.</small></div>
+          <div class="scan-frame" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+          <div class="camera-caption" id="cameraCaption">Ready to scan a HelpUs tag</div>
+        </div>
+        <div class="scanner-actions">
+          <button class="primary-button" id="startCamera" type="button">▦ &nbsp; Start camera</button>
+          <label class="upload-button" for="qrImage">▧ &nbsp; Scan QR photo</label>
+          <input id="qrImage" type="file" accept="image/*" capture="environment" hidden />
+        </div>
+        <div class="scan-result" id="scanResult" role="status" aria-live="polite" hidden>
+          <span class="result-check" id="resultIcon">✓</span>
+          <div class="result-copy"><b id="resultTitle">QR code found</b><code id="resultValue"></code><small id="resultNote"></small></div>
+        </div>
+        <a class="continue-button" id="continueRegistration" href="index.html?register=1" hidden>Continue to vehicle registration <span>↗</span></a>
+        <div class="scanner-tip" id="scannerTip">Only a valid <b>HELPUS:TAGCODE</b> QR unlocks vehicle registration.</div>
+      </div>
+    </section>
+
+    <section class="demo-card">
+      <div><span class="eyebrow">TRY THE SCANNER</span><h2>Need a QR to test?</h2><p>Show or download this demo tag, then scan it with another phone or choose its image above.</p></div>
+      <div class="demo-output"><div class="demo-qr" id="demoQr" aria-label="Demo HelpUs QR code"></div><div class="demo-code"><b>DEMO QR TAG</b><code>HELPUS:DEMO2026</code><button id="downloadDemoTag" type="button" disabled>Download test QR ↓</button></div></div>
+      <p class="demo-note">Demo tag only. A real account needs an issued tag code from the HelpUs database.</p>
+    </section>
+    <footer>HelpUs · Your vehicle, always reachable.</footer>
+  </main>
+  <canvas id="scanCanvas" hidden></canvas>
+  <canvas id="demoCanvas" hidden></canvas>
+  <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js" defer></script>
+  <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js" defer></script>
+  <script src="scanner.js" defer></script>
+</body>
+</html>
