@@ -130,6 +130,15 @@ $('#authVerifyOtp').addEventListener('click', async () => {
   finally { $('#authVerifyOtp').disabled = false; }
 });
 
+$('#authOtp').addEventListener('input', event => {
+  if (event.currentTarget.value.replace(/\D/g, '').length === 6) {
+    setTimeout(() => {
+      const verifyButton = $('#authVerifyOtp');
+      if (!verifyButton.disabled && !phoneLoginBackdrop.hidden) verifyButton.click();
+    }, 0);
+  }
+});
+
 $('#authResendOtp').addEventListener('click', () => { $('#otpStep').hidden = true; $('#authSendOtp').click(); });
 
 async function loadAccountData() {
