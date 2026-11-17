@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+
+import 'dart:math';
+
 import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -11,6 +14,7 @@ const supabaseUrl = String.fromEnvironment('SUPABASE_URL');
 const supabaseAnonKey = String.fromEnvironment('SUPABASE_ANON_KEY');
 bool get supabaseConfigured =>
     supabaseUrl.startsWith('https://') && supabaseAnonKey.isNotEmpty;
+final ValueNotifier<bool> demoSignedIn = ValueNotifier(false);
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -65,7 +69,13 @@ class AuthGate extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (!supabaseConfigured) return const BackendSetupScreen();
+    if (!supabaseConfigured) {
+      return ValueListenableBuilder<bool>(
+        valueListenable: demoSignedIn,
+        builder: (context, signedIn, _) =>
+            signedIn ? const HelpUsHome() : const PhoneLoginScreen(),
+      );
+    }
     final client = Supabase.instance.client;
     return StreamBuilder<AuthState>(
       stream: client.auth.onAuthStateChange,
@@ -140,6 +150,7 @@ class _PhoneLoginScreenState extends State<PhoneLoginScreen> {
   final _otp = TextEditingController();
   bool _otpSent = false;
   bool _busy = false;
+  String? _demoCode;
   String? _message;
   bool _isError = false;
 
@@ -170,6 +181,20 @@ class _PhoneLoginScreenState extends State<PhoneLoginScreen> {
       _busy = true;
       _message = null;
     });
+    if (!supabaseConfigured) {
+      final random = Random.secure();
+      final code = (100000 + random.nextInt(900000)).toString();
+      setState(() {
+        _demoCode = code;
+        _otpSent = true;
+        _busy = false;
+        _phone.text = phone;
+        _message =
+            'DEMO CODE: $code. No SMS was sent; this only opens a sample account.';
+        _isError = false;
+      });
+      return;
+    }
     try {
       await Supabase.instance.client.auth.signInWithOtp(
         phone: phone,
@@ -198,7 +223,23 @@ class _PhoneLoginScreenState extends State<PhoneLoginScreen> {
     final phone = _normalisedPhone();
     final token = _otp.text.replaceAll(RegExp(r'\D'), '');
     if (token.length != 6) {
-      _setMessage('Enter the 6-digit code sent to your phone.', error: true);
+      _setMessage(
+        supabaseConfigured
+            ? 'Enter the 6-digit code sent to your phone.'
+            : 'Enter the 6-digit demo code shown in this screen.',
+        error: true,
+      );
+      return;
+    }
+    if (!supabaseConfigured) {
+      if (token != _demoCode) {
+        _setMessage(
+          'That demo code is incorrect. Use the code shown above.',
+          error: true,
+        );
+        return;
+      }
+      demoSignedIn.value = true;
       return;
     }
     setState(() {
@@ -246,7 +287,11 @@ class _PhoneLoginScreenState extends State<PhoneLoginScreen> {
                 const Center(child: _HelpUsMark()),
                 const SizedBox(height: 23),
                 Text(
-                  _otpSent ? 'Check your messages.' : 'Welcome to HelpUs.',
+                  _otpSent
+                      ? (supabaseConfigured
+                            ? 'Check your messages.'
+                            : 'Your demo code is ready.')
+                      : 'Welcome to HelpUs.',
                   textAlign: TextAlign.center,
                   style: Theme.of(context).textTheme.headlineSmall
                       ?.copyWith(fontWeight: FontWeight.w800, color: forest),
@@ -254,7 +299,9 @@ class _PhoneLoginScreenState extends State<PhoneLoginScreen> {
                 const SizedBox(height: 7),
                 Text(
                   _otpSent
-                      ? 'Enter the code we sent to ${_normalisedPhone()}.'
+                      ? (supabaseConfigured
+                            ? 'Enter the code we sent to ${_normalisedPhone()}.'
+                            : 'Enter the code shown below for ${_normalisedPhone()}.')
                       : 'Sign in or create an account with your mobile number.',
                   textAlign: TextAlign.center,
                   style: const TextStyle(color: Color(0xFF778278), height: 1.5),
@@ -269,7 +316,7 @@ class _PhoneLoginScreenState extends State<PhoneLoginScreen> {
                           TextField(
                             controller: _name,
                             textCapitalization: TextCapitalization.words,
-                            decoration: const InputDecoration(
+                            decoration: InputDecoration(
                               labelText: 'Your name (new accounts)',
                               prefixIcon: Icon(Icons.person_outline),
                             ),
@@ -299,8 +346,10 @@ class _PhoneLoginScreenState extends State<PhoneLoginScreen> {
                               letterSpacing: 8,
                               fontWeight: FontWeight.bold,
                             ),
-                            decoration: const InputDecoration(
-                              labelText: '6-digit verification code',
+                            decoration: InputDecoration(
+                              labelText: supabaseConfigured
+                                  ? '6-digit verification code'
+                                  : '6-digit demo code',
                               counterText: '',
                             ),
                           ),
@@ -343,8 +392,12 @@ class _PhoneLoginScreenState extends State<PhoneLoginScreen> {
                                     )
                                   : Text(
                                       _otpSent
-                                          ? 'Verify & continue'
-                                          : 'Send one-time code',
+                                          ? (supabaseConfigured
+                                                ? 'Verify & continue'
+                                                : 'Verify demo code')
+                                          : (supabaseConfigured
+                                                ? 'Send one-time code'
+                                                : 'Generate free demo code'),
                                     ),
                             ),
                           ),
@@ -359,8 +412,10 @@ class _PhoneLoginScreenState extends State<PhoneLoginScreen> {
                   ),
                 ),
                 const SizedBox(height: 12),
-                const Text(
-                  'Your phone number stays private. We use it for account verification and vehicle alerts.',
+                Text(
+                  supabaseConfigured
+                      ? 'Your phone number stays private. We use it for account verification and vehicle alerts.'
+                      : 'Demo only: no text is sent, the number is not verified, and demo data stays on this device.',
                   textAlign: TextAlign.center,
                   style: TextStyle(
                     color: Color(0xFF929B92),
@@ -421,6 +476,23 @@ class _HelpUsHomeState extends State<HelpUsHome> {
   }
 
   Future<void> _loadVehicles() async {
+    if (!supabaseConfigured) {
+      if (mounted) {
+        setState(() {
+          _vehicles
+            ..clear()
+            ..add(
+              const Vehicle(
+                'Honda City',
+                'KA 03 AB 1234',
+                '2022 · White',
+                tagId: 'HU-DEMO-001',
+              ),
+            );
+        });
+      }
+      return;
+    }
     try {
       final rows = await Supabase.instance.client
           .from('vehicles')
@@ -455,6 +527,7 @@ class _HelpUsHomeState extends State<HelpUsHome> {
   }
 
   Future<void> _loadAlerts() async {
+    if (!supabaseConfigured) return;
     try {
       final rows = await Supabase.instance.client
           .from('scan_alerts')
@@ -476,6 +549,7 @@ class _HelpUsHomeState extends State<HelpUsHome> {
   }
 
   Future<void> _loadPreferences() async {
+    if (!supabaseConfigured) return;
     try {
       final userId = Supabase.instance.client.auth.currentUser!.id;
       final profile = await Supabase.instance.client
@@ -503,6 +577,7 @@ class _HelpUsHomeState extends State<HelpUsHome> {
     void Function(bool) apply,
   ) async {
     apply(value);
+    if (!supabaseConfigured) return;
     try {
       final userId = Supabase.instance.client.auth.currentUser!.id;
       await Supabase.instance.client
@@ -587,6 +662,11 @@ class _HelpUsHomeState extends State<HelpUsHome> {
     name.dispose();
     registration.dispose();
     if (result != null && mounted) {
+      if (!supabaseConfigured) {
+        setState(() => _vehicles.add(result));
+        _notice('Demo vehicle added on this device only.');
+        return;
+      }
       try {
         await Supabase.instance.client.rpc(
           'register_vehicle',
@@ -1161,11 +1241,19 @@ class _HelpUsHomeState extends State<HelpUsHome> {
             style: TextStyle(fontWeight: FontWeight.bold),
           ),
           subtitle: Text(
-            Supabase.instance.client.auth.currentUser?.phone ?? '',
+            supabaseConfigured
+                ? Supabase.instance.client.auth.currentUser?.phone ?? ''
+                : 'Demo only · number not verified',
             style: const TextStyle(fontSize: 11),
           ),
           trailing: TextButton(
-            onPressed: () => Supabase.instance.client.auth.signOut(),
+            onPressed: () {
+              if (supabaseConfigured) {
+                Supabase.instance.client.auth.signOut();
+              } else {
+                demoSignedIn.value = false;
+              }
+            },
             child: const Text('Sign out'),
           ),
         ),

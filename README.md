@@ -30,11 +30,11 @@ The phone OTP login and shared vehicle data use Supabase Auth and Postgres. They
 4. Build the Android APK with `flutter build apk --release --dart-define=SUPABASE_URL=https://YOUR_PROJECT.supabase.co --dart-define=SUPABASE_ANON_KEY=YOUR_PUBLISHABLE_KEY` from `mobile_app/`.
 5. For each physical QR tag, add its uppercase code to `public.vehicle_tags` from the Supabase SQL Editor. Its QR payload should be `HELPUS:<TAG_CODE>`.
 
-With blank config, a fresh APK shows setup guidance and the website login explains that authentication is not connected. The existing published Pages demo stays unchanged until project configuration is supplied and a connected build is deployed. Never send SMS provider secrets in the browser or mobile app.
+With blank config, both apps offer a free demo OTP: they generate a code locally and show it on the screen. No SMS is sent, no phone number is verified, and the demo session is not a real account. Do not use this mode to protect personal data. After the real project URL/key and SMS provider are configured, rebuild the APK and redeploy the website. Never send SMS provider secrets in the browser or mobile app.
 
 ## Prototype boundaries
 
-The phone auth UI and client-side data integration are implemented, with database-side owner policies and one-time tag claiming in the supplied schema. They become active only after a Supabase project and SMS provider are configured. The website QR camera requires a supported browser over HTTPS; the APK requests Android camera access. Masked calling, SMS alerts, payments, tag ordering/shipping, public scanner event intake, and account deletion still need provider/backend flows before commercial launch. No live tracking is implemented.
+The phone auth UI and client-side data integration are implemented, with database-side owner policies and one-time tag claiming in the supplied schema. With Supabase configured, the apps send and verify real phone OTPs; without it they run the demo OTP flow above. The website QR camera requires a supported browser over HTTPS; the APK requests Android camera access. Masked calling, SMS alerts, payments, tag ordering/shipping, public scanner event intake, and account deletion still need provider/backend flows before commercial launch. No live tracking is implemented.
 
 ## Files
 

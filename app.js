@@ -42,8 +42,18 @@ document.body.append(phoneLoginBackdrop);
 
 function openPhoneLogin() {
   phoneLoginBackdrop.hidden = false;
-  $('#authStatus').textContent = authClient ? 'Your number stays private. SMS delivery depends on the configured provider.' : 'Phone login is ready in the app code, but the Supabase project and SMS provider are not connected yet.';
-  $('#authSendOtp').disabled = !authClient;
+  $('.phone-login-modal .eyebrow').textContent = authClient ? 'SECURE PHONE SIGN IN' : 'FREE OTP DEMO';
+  $('.phone-login-modal>p').textContent = authClient
+    ? 'Sign in or register with your mobile number. We’ll text you a one-time code.'
+    : 'Try the phone login screen for free. A demo code appears here; no SMS is sent and no phone ownership is verified.';
+  $('#authStatus').textContent = authClient
+    ? 'Your number stays private. SMS delivery depends on the configured provider.'
+    : 'Free demo mode: a code will be generated here. No SMS is sent and the number is not verified.';
+  $('#authStatus').classList.toggle('demo-mode', !authClient);
+  $('.auth-footnote').textContent = authClient
+    ? 'By continuing, you agree to use your number for account verification and HelpUs alerts.'
+    : 'Demo only: do not use this flow to protect real accounts or personal vehicle data.';
+  $('#authSendOtp').disabled = false;
   $('#authDisplayName').focus();
 }
 
@@ -65,13 +75,20 @@ $('#phoneLoginClose').addEventListener('click', closePhoneLogin);
 phoneLoginBackdrop.addEventListener('click', event => { if (event.target === phoneLoginBackdrop) closePhoneLogin(); });
 
 $('#authSendOtp').addEventListener('click', async () => {
-  if (!authClient) return;
   const phone = normalizePhone($('#authPhone').value);
   if (!phone) { showAuthStatus('Enter a valid number with country code, such as +91 98765 43210.', true); return; }
   const button = $('#authSendOtp');
   button.disabled = true;
   showAuthStatus('Sending your verification code…');
   try {
+    if (!authClient) {
+      window.helpUsPendingPhone = phone;
+      window.helpUsDemoOtp = String(Math.floor(100000 + Math.random() * 900000));
+      $('#otpStep').hidden = false;
+      $('#authOtp').focus();
+      showAuthStatus(`DEMO CODE: ${window.helpUsDemoOtp}. No SMS was sent; this only opens a sample account.`);
+      return;
+    }
     const displayName = $('#authDisplayName').value.trim();
     const { error } = await authClient.auth.signInWithOtp({ phone, options: { shouldCreateUser: true, data: { display_name: displayName } } });
     if (error) throw error;
@@ -84,10 +101,20 @@ $('#authSendOtp').addEventListener('click', async () => {
 });
 
 $('#authVerifyOtp').addEventListener('click', async () => {
-  if (!authClient) return;
   const phone = window.helpUsPendingPhone;
   const token = $('#authOtp').value.replace(/\D/g, '');
   if (!phone || token.length < 6) { showAuthStatus('Enter the 6-digit code sent to your phone.', true); return; }
+  if (!authClient) {
+    if (token !== window.helpUsDemoOtp) { showAuthStatus('That demo code is incorrect. Use the code shown above.', true); return; }
+    authSession = { demo: true, user: { id: 'local-demo', phone, user_metadata: { display_name: $('#authDisplayName').value.trim() || 'Demo driver' } } };
+    accountName = authSession.user.user_metadata.display_name.split(' ')[0];
+    $$('.user-mini b').forEach(node => node.textContent = authSession.user.user_metadata.display_name);
+    $$('.user-mini small').forEach(node => node.textContent = `${phone} · demo only`);
+    closePhoneLogin();
+    showToast('Demo sign-in complete. The phone number was not verified.');
+    showView('dashboard');
+    return;
+  }
   $('#authVerifyOtp').disabled = true;
   showAuthStatus('Checking your code…');
   try {
@@ -141,12 +168,14 @@ if (authClient) {
     authSession = session;
     if (!session && !dashboard.hidden) showView('home');
   });
-  $('#signOutButton')?.addEventListener('click', async () => {
-    await authClient.auth.signOut();
-    authSession = null;
-    showView('home');
-  });
 }
+
+$('#signOutButton')?.addEventListener('click', async () => {
+    if (authClient) await authClient.auth.signOut();
+    authSession = null;
+    window.helpUsDemoOtp = null;
+    showView('home');
+});
 
 function setTab(tab) {
   $$('.tab-panel').forEach(panel => panel.hidden = panel.id !== `${tab}Panel`);
@@ -277,12 +306,27 @@ vehicleForm.addEventListener('submit', async event => {
   const form = new FormData(event.currentTarget);
   const tagId = String(form.get('tagId') || '');
   if (!tagId) { showToast('Scan a valid HelpUs QR tag before registering.'); return; }
-  if (!authClient || !authSession?.user) { showToast('Sign in before registering a vehicle.'); openPhoneLogin(); return; }
+  if (!authSession?.user) { showToast('Sign in before registering a vehicle.'); openPhoneLogin(); return; }
   const name = String(form.get('vehicle')).trim();
   const registration = String(form.get('registration')).trim().toUpperCase();
   const year = String(form.get('year')).trim();
   const submitButton = $('.modal-submit', vehicleForm);
   submitButton.disabled = true;
+  if (!authClient) {
+    const card = document.createElement('div'); card.className = 'vehicle-list-card';
+    const icon = document.createElement('div'); icon.className = 'list-car-icon'; icon.textContent = '↗';
+    const details = document.createElement('div');
+    const title = document.createElement('h3'); title.textContent = name;
+    const subtitle = document.createElement('p'); subtitle.textContent = [year, registration].filter(Boolean).join(' · ');
+    const status = document.createElement('span'); status.className = 'active-pill'; status.textContent = `● Demo tag · ${tagId}`;
+    details.append(title, subtitle, status); card.append(icon, details); $('.vehicle-list').prepend(card);
+    $('.vehicle-info h3').textContent = name;
+    $('.vehicle-info span').textContent = [year, registration].filter(Boolean).join(' · ');
+    stopWebCamera(); vehicleModal.hidden = true; event.currentTarget.reset();
+    showToast('Added to this demo session only. It is not saved to a server.');
+    setTab('vehicles');
+    return;
+  }
   try {
     const { error } = await authClient.rpc('register_vehicle', { p_tag_code: tagId, p_make_model: name, p_registration_number: registration, p_vehicle_type: 'car', p_model_year: year ? Number(year) : null, p_color: '' });
     if (error) throw error;
